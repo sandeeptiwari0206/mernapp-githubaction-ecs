@@ -67,8 +67,13 @@ pipeline {
 
                 docker run -d \
                   --name backend \
-                  -p 5000:5000 \
-                  $BACKEND_IMAGE:latest
+                   -p 5000:5000 \
+                   -e NODE_ENV=development \
+                -e PORT=5000 \
+                   -e MONGO_URI="mongodb+srv://sandeeptiwari_db_user:vHxJba4SRSaC4tIV@cluster0.cbb1rgz.mongodb.net/?appName=Cluster0" \
+                   -e JWT_SECRET="abc123" \
+                    sandeeptiwari0206/mern-backend:latest
+
 
                 docker run -d \
                   --name frontend \

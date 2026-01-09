@@ -8,35 +8,73 @@ pipeline {
     }
 
     stages {
-        stage('Build Frontend') {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/sandeeptiwari0206/mernapp.git'
+            }
+        }
+
+        stage('Build Frontend Image') {
             steps {
                 dir('frontend') {
-                    // Using %VAR% for Windows Batch compatibility
-                    bat "docker build -t %FRONTEND_IMAGE%:latest ."
+                    bat 'docker build -t %FRONTEND_IMAGE% .'
                 }
             }
         }
 
-        stage('Build Backend') {
+        stage('Build Backend Image') {
             steps {
                 dir('backend') {
-                    bat "docker build -t %BACKEND_IMAGE%:latest ."
+                    bat 'docker build -t %BACKEND_IMAGE% .'
                 }
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Docker Hub Login') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: DOCKER_CREDS,
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
+                    bat 'echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin'
+                }
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                bat """
+                  docker push %FRONTEND_IMAGE%
+                  docker push %BACKEND_IMAGE%
+                """
+            }
+        }
+
+        stage('Deploy Containers') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'mongo-uri', variable: 'MONGO_URI'),
+                    string(credentialsId: 'jwt-secret', variable: 'JWT_SECRET')
+                ]) {
                     bat """
-                    echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
-                    docker push %FRONTEND_IMAGE%:latest
-                    docker push %BACKEND_IMAGE%:latest
-                    docker logout
+                    docker rm -f frontend backend || exit 0
+
+                    docker run -d ^
+                      --name backend ^
+                      -p 5000:5000 ^
+                      -e NODE_ENV=development ^
+                      -e PORT=5000 ^
+                      -e MONGO_URI=%MONGO_URI% ^
+                      -e JWT_SECRET=%JWT_SECRET% ^
+                      %BACKEND_IMAGE%
+
+                    docker run -d ^
+                      --name frontend ^
+                      -p 3000:3000 ^
+                      %FRONTEND_IMAGE%
                     """
                 }
             }
@@ -45,10 +83,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Images built and pushed to Docker Hub successfully!"
+            echo "✅ MERN pipeline deployed successfully on Windows Docker!"
         }
         failure {
-            echo "❌ CI Pipeline failed. Ensure Docker Desktop is running and Jenkins has access."
+            echo "❌ Pipeline failed. Check Jenkins logs."
         }
     }
 }

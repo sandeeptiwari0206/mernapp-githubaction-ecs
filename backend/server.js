@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import userRoutes from './routes/userRoutes.js';
 
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 5005;
 
 connectDB();
 
@@ -36,7 +36,7 @@ if (process.env.NODE_ENV === 'production') {
 app.use(notFound);
 app.use(errorHandler);
 
-const port = 5000;
+const port = 5005;
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server started on port ${port}`);

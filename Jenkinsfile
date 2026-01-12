@@ -6,6 +6,7 @@ pipeline {
         FRONTEND_IMAGE = "sandeeptiwari0206/mern-frontend"
         BACKEND_IMAGE  = "sandeeptiwari0206/mern-backend"
         DOCKER_CREDS   = "dockerhub-creds"
+        DOCKER_BUILDKIT = "1"
     }
 
     stages {
@@ -17,60 +18,71 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis - Frontend') {
-            steps {
-                dir('frontend') {
-                    withSonarQubeEnv('sonarqube') {
-                        script {
-                            def scannerHome = tool 'SonarScanner'
-                            bat "${scannerHome}\\bin\\sonar-scanner.bat"
+        /* ==========================
+           SONARQUBE (PARALLEL)
+        =========================== */
+        stage('SonarQube Analysis') {
+            parallel {
+
+                stage('Frontend Scan') {
+                    steps {
+                        dir('frontend') {
+                            withSonarQubeEnv('sonarqube') {
+                                script {
+                                    def scannerHome = tool 'SonarScanner'
+                                    bat "${scannerHome}\\bin\\sonar-scanner.bat"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('Backend Scan') {
+                    steps {
+                        withSonarQubeEnv('sonarqube') {
+                            script {
+                                def scannerHome = tool 'SonarScanner'
+                                bat "${scannerHome}\\bin\\sonar-scanner.bat"
+                            }
                         }
                     }
                 }
             }
         }
 
-        stage('SonarQube Analysis - Backend') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    script {
-                        def scannerHome = tool 'SonarScanner'
-                        bat "${scannerHome}\\bin\\sonar-scanner.bat"
+        /* ==========================
+           BUILD IMAGES (PARALLEL)
+        =========================== */
+        stage('Build Docker Images') {
+            parallel {
+
+                stage('Build Frontend Image') {
+                    steps {
+                        dir('frontend') {
+                            bat """
+                            docker build ^
+                              -t %FRONTEND_IMAGE%:%IMAGE_TAG% ^
+                              -t %FRONTEND_IMAGE%:latest .
+                            """
+                        }
+                    }
+                }
+
+                stage('Build Backend Image') {
+                    steps {
+                        bat """
+                        docker build ^
+                          -t %BACKEND_IMAGE%:%IMAGE_TAG% ^
+                          -t %BACKEND_IMAGE%:latest .
+                        """
                     }
                 }
             }
         }
 
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Build Frontend Image') {
-            steps {
-                dir('frontend') {
-                    bat """
-                    docker build ^
-                      -t %FRONTEND_IMAGE%:%IMAGE_TAG% ^
-                      -t %FRONTEND_IMAGE%:latest .
-                    """
-                }
-            }
-        }
-
-        stage('Build Backend Image') {
-            steps {
-                bat """
-                docker build ^
-                  -t %BACKEND_IMAGE%:%IMAGE_TAG% ^
-                  -t %BACKEND_IMAGE%:latest .
-                """
-            }
-        }
-
+        /* ==========================
+           DOCKER HUB LOGIN
+        =========================== */
         stage('Docker Hub Login') {
             steps {
                 withCredentials([usernamePassword(
@@ -83,18 +95,46 @@ pipeline {
             }
         }
 
+        /* ==========================
+           PUSH IMAGES (PARALLEL)
+        =========================== */
         stage('Push Images') {
-            steps {
-                bat """
-                docker push %FRONTEND_IMAGE%:%IMAGE_TAG%
-                docker push %FRONTEND_IMAGE%:latest
+            parallel {
 
-                docker push %BACKEND_IMAGE%:%IMAGE_TAG%
-                docker push %BACKEND_IMAGE%:latest
-                """
+                stage('Push Frontend') {
+                    steps {
+                        bat """
+                        docker push %FRONTEND_IMAGE%:%IMAGE_TAG%
+                        docker push %FRONTEND_IMAGE%:latest
+                        """
+                    }
+                }
+
+                stage('Push Backend') {
+                    steps {
+                        bat """
+                        docker push %BACKEND_IMAGE%:%IMAGE_TAG%
+                        docker push %BACKEND_IMAGE%:latest
+                        """
+                    }
+                }
             }
         }
 
+        /* ==========================
+           QUALITY GATE
+        =========================== */
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        /* ==========================
+           DEPLOY
+        =========================== */
         stage('Deploy Containers') {
             steps {
                 withCredentials([
@@ -125,10 +165,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Versioned MERN images deployed successfully!"
+            echo "✅ Optimized MERN pipeline executed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed. Check Jenkins & SonarQube logs."
+            echo "❌ Pipeline failed. Check Jenkins or SonarQube logs."
         }
     }
 }

@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    tools {
-        sonarQube 'sonar-scanner'
-    }
-
     environment {
         FRONTEND_IMAGE = "sandeeptiwari0206/mern-frontend"
         BACKEND_IMAGE  = "sandeeptiwari0206/mern-backend"

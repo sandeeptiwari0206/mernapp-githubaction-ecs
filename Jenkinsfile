@@ -24,37 +24,43 @@ pipeline {
         /* ==========================
            SONARQUBE (PARALLEL + FIXED)
         =========================== */
-        stage('SonarQube Analysis') {
-            parallel {
+       stage('SonarQube Analysis') {
+    parallel {
 
-                stage('Frontend Scan') {
-                    steps {
-                        dir('frontend') {
-                            withSonarQubeEnv('sonarqube') {
-                                bat """
-                                sonar-scanner ^
-                                  -Dsonar.projectKey=mern-frontend ^
-                                  -Dsonar.projectBaseDir=. ^
-                                  -Dsonar.workDir=.scannerwork-frontend
-                                """
-                            }
-                        }
-                    }
-                }
-
-                stage('Backend Scan') {
-                    steps {
-                        withSonarQubeEnv('sonarqube') {
+        stage('Frontend Scan') {
+            steps {
+                dir('frontend') {
+                    withSonarQubeEnv('sonarqube') {
+                        script {
+                            def scannerHome = tool 'SonarScanner'
                             bat """
-                            sonar-scanner ^
-                              -Dsonar.projectKey=mern-backend ^
-                              -Dsonar.workDir=.scannerwork-backend
+                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                              -Dsonar.projectKey=mern-frontend ^
+                              -Dsonar.projectBaseDir=. ^
+                              -Dsonar.workDir=.scannerwork-frontend
                             """
                         }
                     }
                 }
             }
         }
+
+        stage('Backend Scan') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    script {
+                        def scannerHome = tool 'SonarScanner'
+                        bat """
+                        "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                          -Dsonar.projectKey=mern-backend ^
+                          -Dsonar.workDir=.scannerwork-backend
+                        """
+                    }
+                }
+            }
+        }
+    }
+}
 
         /* ==========================
            BUILD IMAGES (PARALLEL)

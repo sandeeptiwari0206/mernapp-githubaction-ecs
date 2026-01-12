@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        IMAGE_TAG      = "${BUILD_NUMBER}"
         FRONTEND_IMAGE = "sandeeptiwari0206/mern-frontend"
         BACKEND_IMAGE  = "sandeeptiwari0206/mern-backend"
         DOCKER_CREDS   = "dockerhub-creds"
@@ -51,14 +52,22 @@ pipeline {
         stage('Build Frontend Image') {
             steps {
                 dir('frontend') {
-                    bat 'docker build -t %FRONTEND_IMAGE% .'
+                    bat """
+                    docker build ^
+                      -t %FRONTEND_IMAGE%:%IMAGE_TAG% ^
+                      -t %FRONTEND_IMAGE%:latest .
+                    """
                 }
             }
         }
 
         stage('Build Backend Image') {
             steps {
-                bat 'docker build -f Dockerfile -t %BACKEND_IMAGE% .'
+                bat """
+                docker build ^
+                  -t %BACKEND_IMAGE%:%IMAGE_TAG% ^
+                  -t %BACKEND_IMAGE%:latest .
+                """
             }
         }
 
@@ -77,8 +86,11 @@ pipeline {
         stage('Push Images') {
             steps {
                 bat """
-                  docker push %FRONTEND_IMAGE%
-                  docker push %BACKEND_IMAGE%
+                docker push %FRONTEND_IMAGE%:%IMAGE_TAG%
+                docker push %FRONTEND_IMAGE%:latest
+
+                docker push %BACKEND_IMAGE%:%IMAGE_TAG%
+                docker push %BACKEND_IMAGE%:latest
                 """
             }
         }
@@ -99,12 +111,12 @@ pipeline {
                       -e PORT=5000 ^
                       -e MONGO_URI=%MONGO_URI% ^
                       -e JWT_SECRET=%JWT_SECRET% ^
-                      %BACKEND_IMAGE%
+                      %BACKEND_IMAGE%:%IMAGE_TAG%
 
                     docker run -d ^
                       --name frontend ^
                       -p 3000:3000 ^
-                      %FRONTEND_IMAGE%
+                      %FRONTEND_IMAGE%:%IMAGE_TAG%
                     """
                 }
             }
@@ -113,10 +125,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ MERN pipeline with SonarQube deployed successfully!"
+            echo "✅ Versioned MERN images deployed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed. Check Jenkins & SonarQube logs. Thanks."
+            echo "❌ Pipeline failed. Check Jenkins & SonarQube logs."
         }
     }
 }

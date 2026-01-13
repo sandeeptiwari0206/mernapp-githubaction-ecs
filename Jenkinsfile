@@ -1,17 +1,20 @@
 pipeline {
-agent none
-    
+    agent none
+
     environment {
-        IMAGE_TAG      = "${BUILD_NUMBER}"
+        IMAGE_TAG = "${BUILD_NUMBER}"
         FRONTEND_IMAGE = "sandeeptiwari0206/mern-frontend"
         BACKEND_IMAGE  = "sandeeptiwari0206/mern-backend"
-        DOCKER_CREDS   = "dockerhub-creds"
     }
 
     stages {
 
-        stage('CI - Checkout & Sonar & Build') {
-            agent { label 'master' }
+        /* =======================
+           CI STAGE (WINDOWS)
+           ======================= */
+
+        stage('CI - Checkout, Sonar, Build & Push') {
+            agent { label 'windows' }
 
             stages {
 
@@ -26,7 +29,10 @@ agent none
                     steps {
                         dir('frontend') {
                             withSonarQubeEnv('sonarqube') {
-                                bat 'sonar-scanner'
+                                script {
+                                    def scannerHome = tool 'SonarScanner'
+                                    bat "${scannerHome}\\bin\\sonar-scanner.bat"
+                                }
                             }
                         }
                     }
@@ -35,7 +41,10 @@ agent none
                 stage('SonarQube - Backend') {
                     steps {
                         withSonarQubeEnv('sonarqube') {
-                            bat 'sonar-scanner'
+                            script {
+                                def scannerHome = tool 'SonarScanner'
+                                bat "${scannerHome}\\bin\\sonar-scanner.bat"
+                            }
                         }
                     }
                 }
@@ -51,7 +60,7 @@ agent none
                 stage('Docker Login') {
                     steps {
                         withCredentials([usernamePassword(
-                            credentialsId: DOCKER_CREDS,
+                            credentialsId: 'dockerhub-creds',
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
@@ -64,8 +73,7 @@ agent none
                     steps {
                         bat """
                         docker build -t %FRONTEND_IMAGE%:%IMAGE_TAG% frontend
-                        docker build -t %BACKEND_IMAGE%:%IMAGE_TAG% backend
-
+                        docker build -t %BACKEND_IMAGE%:%IMAGE_TAG% .
                         docker push %FRONTEND_IMAGE%:%IMAGE_TAG%
                         docker push %BACKEND_IMAGE%:%IMAGE_TAG%
                         """
@@ -74,29 +82,39 @@ agent none
             }
         }
 
+        /* =======================
+           CD STAGE (LINUX EC2)
+           ======================= */
+
         stage('CD - Deploy on EC2') {
-            agent { label 'slave' }
+            agent { label 'ec2-node' }
 
             steps {
                 withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    ),
                     string(credentialsId: 'mongo-uri', variable: 'MONGO_URI'),
                     string(credentialsId: 'jwt-secret', variable: 'JWT_SECRET')
                 ]) {
+
                     sh """
-                    docker pull $FRONTEND_IMAGE:$IMAGE_TAG
-                    docker pull $BACKEND_IMAGE:$IMAGE_TAG
+                    ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_USER@<EC2_PUBLIC_IP> '
+                      docker pull $FRONTEND_IMAGE:$IMAGE_TAG &&
+                      docker pull $BACKEND_IMAGE:$IMAGE_TAG &&
 
-                    docker rm -f frontend backend || true
+                      docker rm -f frontend backend || true &&
 
-                    docker run -d --name backend -p 5000:5000 \
-                      -e NODE_ENV=production \
-                      -e PORT=5000 \
-                      -e MONGO_URI=$MONGO_URI \
-                      -e JWT_SECRET=$JWT_SECRET \
-                      $BACKEND_IMAGE:$IMAGE_TAG
+                      docker run -d --name backend -p 5000:5000 \
+                        -e MONGO_URI=$MONGO_URI \
+                        -e JWT_SECRET=$JWT_SECRET \
+                        $BACKEND_IMAGE:$IMAGE_TAG &&
 
-                    docker run -d --name frontend -p 3000:3000 \
-                      $FRONTEND_IMAGE:$IMAGE_TAG
+                      docker run -d --name frontend -p 3000:3000 \
+                        $FRONTEND_IMAGE:$IMAGE_TAG
+                    '
                     """
                 }
             }
@@ -105,10 +123,10 @@ agent none
 
     post {
         success {
-            echo "✅ CI/CD completed successfully"
+            echo '✅ CI/CD Pipeline completed successfully'
         }
         failure {
-            echo "❌ Pipeline failed"
+            echo '❌ CI/CD Pipeline failed'
         }
     }
 }

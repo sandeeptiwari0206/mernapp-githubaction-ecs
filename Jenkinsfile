@@ -107,7 +107,7 @@ pipeline {
                     string(credentialsId: 'jwt-secret', variable: 'JWT_SECRET')
                 ]) {
                     bat """
-                    ssh -i %SSH_KEY% -o StrictHostKeyChecking=no %SSH_USER%@EC2_PUBLIC_IP ^
+                    ssh -i %SSH_KEY% -o StrictHostKeyChecking=no %SSH_USER%@43.204.108.229 ^
                     "docker pull %FRONTEND_IMAGE%:%IMAGE_TAG% && ^
                      docker pull %BACKEND_IMAGE%:%IMAGE_TAG% && ^
                      docker rm -f frontend backend || true && ^

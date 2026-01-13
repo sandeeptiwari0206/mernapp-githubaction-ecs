@@ -2,17 +2,22 @@ pipeline {
     agent none
 
     environment {
-        IMAGE_TAG      = "${BUILD_NUMBER}"
+        IMAGE_TAG = "${BUILD_NUMBER}"
         FRONTEND_IMAGE = "sandeeptiwari0206/mern-frontend"
         BACKEND_IMAGE  = "sandeeptiwari0206/mern-backend"
-        DOCKER_CREDS   = "dockerhub-creds"
     }
 
     stages {
 
-        stage('CI - Checkout, SonarQube & Build Docker Images') {
-            agent { label 'master' } // Your Windows Jenkins node
+        /* =======================
+           CI STAGE (WINDOWS)
+           ======================= */
+
+        stage('CI - Checkout, Sonar, Build & Push') {
+            agent { label 'windows' }
+
             stages {
+
                 stage('Checkout Code') {
                     steps {
                         git branch: 'main',
@@ -24,7 +29,10 @@ pipeline {
                     steps {
                         dir('frontend') {
                             withSonarQubeEnv('sonarqube') {
-                                bat 'docker run --rm -e SONAR_HOST_URL=%SONAR_HOST_URL% -e SONAR_LOGIN=%SONAR_AUTH_TOKEN% sonarsource/sonar-scanner-cli'
+                                script {
+                                    def scannerHome = tool 'SonarScanner'
+                                    bat "${scannerHome}\\bin\\sonar-scanner.bat"
+                                }
                             }
                         }
                     }
@@ -32,9 +40,10 @@ pipeline {
 
                 stage('SonarQube - Backend') {
                     steps {
-                        dir('backend') {
-                            withSonarQubeEnv('sonarqube') {
-                                bat 'docker run --rm -e SONAR_HOST_URL=%SONAR_HOST_URL% -e SONAR_LOGIN=%SONAR_AUTH_TOKEN% sonarsource/sonar-scanner-cli'
+                        withSonarQubeEnv('sonarqube') {
+                            script {
+                                def scannerHome = tool 'SonarScanner'
+                                bat "${scannerHome}\\bin\\sonar-scanner.bat"
                             }
                         }
                     }
@@ -48,10 +57,10 @@ pipeline {
                     }
                 }
 
-                stage('Docker Hub Login') {
+                stage('Docker Login') {
                     steps {
                         withCredentials([usernamePassword(
-                            credentialsId: DOCKER_CREDS,
+                            credentialsId: 'dockerhub-creds',
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
@@ -60,24 +69,11 @@ pipeline {
                     }
                 }
 
-                stage('Build Docker Images') {
-                    steps {
-                        dir('frontend') {
-                            bat """
-                            docker build -t %FRONTEND_IMAGE%:%IMAGE_TAG% .
-                            """
-                        }
-                        dir('backend') {
-                            bat """
-                            docker build -t %BACKEND_IMAGE%:%IMAGE_TAG% .
-                            """
-                        }
-                    }
-                }
-
-                stage('Push Docker Images') {
+                stage('Build & Push Images') {
                     steps {
                         bat """
+                        docker build -t %FRONTEND_IMAGE%:%IMAGE_TAG% frontend
+                        docker build -t %BACKEND_IMAGE%:%IMAGE_TAG% .
                         docker push %FRONTEND_IMAGE%:%IMAGE_TAG%
                         docker push %BACKEND_IMAGE%:%IMAGE_TAG%
                         """
@@ -85,6 +81,10 @@ pipeline {
                 }
             }
         }
+
+        /* =======================
+           CD STAGE (LINUX EC2)
+           ======================= */
 
         stage('CD - Deploy Containers on EC2') {
             agent { label 'slave' } // Your Linux EC2 node with Jenkins agent installed
@@ -117,10 +117,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ CI/CD completed successfully. Versioned images deployed to EC2."
+            echo '✅ CI/CD Pipeline completed successfully'
         }
         failure {
-            echo "❌ Pipeline failed. Check Jenkins & SonarQube logs."
+            echo '❌ CI/CD Pipeline failed'
         }
     }
 }

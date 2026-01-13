@@ -95,28 +95,30 @@ pipeline {
             }
         }
 
-        stage('Deploy Containers') {
+        stage('Deploy on Linux EC2') {
             steps {
                 withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    ),
                     string(credentialsId: 'mongo-uri', variable: 'MONGO_URI'),
                     string(credentialsId: 'jwt-secret', variable: 'JWT_SECRET')
                 ]) {
                     bat """
-                    docker rm -f frontend backend || exit 0
-
-                    docker run -d ^
-                      --name backend ^
-                      -p 5000:5000 ^
-                      -e NODE_ENV=development ^
-                      -e PORT=5000 ^
-                      -e MONGO_URI=%MONGO_URI% ^
-                      -e JWT_SECRET=%JWT_SECRET% ^
-                      %BACKEND_IMAGE%:%IMAGE_TAG%
-
-                    docker run -d ^
-                      --name frontend ^
-                      -p 3000:3000 ^
-                      %FRONTEND_IMAGE%:%IMAGE_TAG%
+                    ssh -i %SSH_KEY% -o StrictHostKeyChecking=no %SSH_USER%@EC2_PUBLIC_IP ^
+                    "docker pull %FRONTEND_IMAGE%:%IMAGE_TAG% && ^
+                     docker pull %BACKEND_IMAGE%:%IMAGE_TAG% && ^
+                     docker rm -f frontend backend || true && ^
+                     docker run -d --name backend -p 5000:5000 ^
+                        -e NODE_ENV=production ^
+                        -e PORT=5000 ^
+                        -e MONGO_URI=%MONGO_URI% ^
+                        -e JWT_SECRET=%JWT_SECRET% ^
+                        %BACKEND_IMAGE%:%IMAGE_TAG% && ^
+                     docker run -d --name frontend -p 3000:3000 ^
+                        %FRONTEND_IMAGE%:%IMAGE_TAG%"
                     """
                 }
             }
@@ -125,10 +127,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Versioned MERN images deployed successfully!"
+            echo "✅ CI/CD completed successfully. App deployed on Linux EC2!"
         }
         failure {
-            echo "❌ Pipeline failed. Check Jenkins & SonarQube logs."
+            echo "❌ Pipeline failed. Check Jenkins or SonarQube logs."
         }
     }
 }

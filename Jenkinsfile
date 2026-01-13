@@ -13,7 +13,7 @@ pipeline {
         /* ===================== CI STAGE (WINDOWS) ===================== */
 
         stage('CI - Checkout, Sonar, Build & Push') {
-            agent { label 'Jenkins' }   // WINDOWS NODE
+            agent { label 'master' }   // WINDOWS NODE
 
             stages {
 
@@ -89,7 +89,7 @@ pipeline {
         /* ===================== CD STAGE (LINUX EC2) ===================== */
 
         stage('CD - Deploy on EC2') {
-            agent { label 'ec2-node' }   // LINUX NODE
+            agent { label 'slave' }   // LINUX NODE
 
             steps {
                 withCredentials([

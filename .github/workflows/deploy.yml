@@ -1,4 +1,4 @@
-name: Deploy MERN App to EC2
+name: Deploy MERN App to ECS
 
 on:
   push:
@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      AWS_REGION: ap-south-1
       BACKEND_IMAGE: sandeeptiwari0206/mern-backend
       FRONTEND_IMAGE: sandeeptiwari0206/mern-frontend
       TAG: ${{ github.run_number }}-${{ github.sha }}
@@ -19,53 +20,51 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
+    # 🔹 Docker Hub Login
     - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    # 🔹 Build & Push Backend (versioned)
+    # 🔹 Build & Push Backend
     - name: Build & Push Backend Image
       run: |
         SHORT_SHA=${TAG:0:7}
         docker build -t $BACKEND_IMAGE:$SHORT_SHA .
         docker push $BACKEND_IMAGE:$SHORT_SHA
+        docker tag $BACKEND_IMAGE:$SHORT_SHA $BACKEND_IMAGE:latest
+        docker push $BACKEND_IMAGE:latest
 
-    # 🔹 Build & Push Frontend (versioned)
+    # 🔹 Build & Push Frontend
     - name: Build & Push Frontend Image
       run: |
         SHORT_SHA=${TAG:0:7}
         docker build -t $FRONTEND_IMAGE:$SHORT_SHA ./frontend
         docker push $FRONTEND_IMAGE:$SHORT_SHA
+        docker tag $FRONTEND_IMAGE:$SHORT_SHA $FRONTEND_IMAGE:latest
+        docker push $FRONTEND_IMAGE:latest
 
-    # 🔹 Deploy on EC2 (image-only, Jenkins style)
-    - name: Deploy on EC2
-      uses: appleboy/ssh-action@v1.0.3
+    # 🔹 Configure AWS Credentials
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        port: 22
-        script: |
-          SHORT_SHA=${{ github.run_number }}-${{ github.sha }}
-          SHORT_SHA=${SHORT_SHA:0:7}
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
 
-          docker stop mern-backend-action mern-frontend-action || true
-          docker rm mern-backend-action mern-frontend-action || true
+    # 🔹 Force ECS Backend Deployment
+    - name: Deploy Backend to ECS
+      run: |
+        aws ecs update-service \
+          --cluster mern-cluster \
+          --service mern-backend-service \
+          --force-new-deployment
 
-          docker pull sandeeptiwari0206/mern-backend:$SHORT_SHA
-          docker pull sandeeptiwari0206/mern-frontend:$SHORT_SHA
-
-          docker run -d \
-            --name mern-backend-action \
-            -p 5000:5000 \
-            -e NODE_ENV=production \
-            -e MONGO_URI="${{ secrets.MONGO_URI }}" \
-            -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-            sandeeptiwari0206/mern-backend:$SHORT_SHA
-
-          docker run -d \
-            --name mern-frontend-action \
-            -p 3000:3000 \
-            sandeeptiwari0206/mern-frontend:$SHORT_SHA
+    # 🔹 Force ECS Frontend Deployment
+    - name: Deploy Frontend to ECS
+      run: |
+        aws ecs update-service \
+          --cluster mern-cluster \
+          --service mern-frontend-service \
+          --force-new-deployment

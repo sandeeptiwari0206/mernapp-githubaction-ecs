@@ -58,7 +58,7 @@ jobs:
       run: |
         aws ecs update-service \
           --cluster mern-cluster \
-          --service mern-backend-service \
+          --service mern-backend-task-service-gbrk5itu \
           --force-new-deployment
 
     # 🔹 Force ECS Frontend Deployment
@@ -66,5 +66,5 @@ jobs:
       run: |
         aws ecs update-service \
           --cluster mern-cluster \
-          --service mern-frontend-service \
+          --service mern-frontend-task-service-s1d5uahr \
           --force-new-deployment

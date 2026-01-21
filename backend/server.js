@@ -37,5 +37,5 @@ app.use(notFound);
 app.use(errorHandler);
 
 app.listen(port, "0.0.0.0", () => {
-  console.log(`Server started on port ${port}`);
+  console.log(`Server is started on port ${port}`);
 });
